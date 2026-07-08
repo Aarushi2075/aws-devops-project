@@ -6,57 +6,72 @@ import logging
 app = Flask(__name__)
 
 logging.basicConfig(
-    filename='app.log',
+    filename="app.log",
     level=logging.INFO,
-    format='%(asctime)s %(levelname)s %(message)s'
+    format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
 TASK_FILE = "tasks.json"
 
 
 def load_tasks():
-    if not os.path.exists(TASK_FILE):
-        return []
+    try:
+        if not os.path.exists(TASK_FILE):
+            app.logger.warning("tasks.json not found. Initializing empty task list.")
+            return []
 
-    with open(TASK_FILE, "r") as f:
-        return json.load(f)
+        with open(TASK_FILE, "r") as f:
+            return json.load(f)
+
+    except Exception:
+        app.logger.exception("Failed to load tasks.")
+        return []
 
 
 def save_tasks(tasks):
-    with open(TASK_FILE, "w") as f:
-        json.dump(tasks, f, indent=4)
+    try:
+        with open(TASK_FILE, "w") as f:
+            json.dump(tasks, f, indent=4)
+
+    except Exception:
+        app.logger.exception("Failed to save tasks.")
 
 
 @app.route("/")
 def home():
+    app.logger.info("Home page accessed")
     tasks = load_tasks()
     return render_template("index.html", tasks=tasks)
 
 
 @app.route("/health")
 def health():
+    app.logger.info("Health check endpoint accessed")
     return jsonify({
-    "status": "healthy",
-    "application": "AWS DevOps Project",
-    "version": "1.0.0"
-})
+        "status": "healthy",
+        "application": "AWS DevOps Project",
+        "version": "1.0.0"
+    })
+
 
 @app.route("/version")
 def version():
+    app.logger.info("Version endpoint accessed")
     return jsonify({
         "version": "1.0.0",
         "environment": "development"
     })
 
+
 @app.route("/tasks", methods=["GET"])
 def get_tasks():
+    app.logger.info("Fetching all tasks")
     return jsonify(load_tasks())
 
 
 @app.route("/tasks", methods=["POST"])
 def create_task():
     tasks = load_tasks()
-
     data = request.json
 
     task = {
@@ -68,7 +83,7 @@ def create_task():
     tasks.append(task)
     save_tasks(tasks)
 
-    logging.info(f"Task created: {task['title']}")
+    app.logger.info(f"Task created: {task['title']}")
 
     return jsonify(task), 201
 
@@ -82,10 +97,11 @@ def update_task(id):
             task["completed"] = True
             save_tasks(tasks)
 
-            logging.info(f"Task completed: {id}")
+            app.logger.info(f"Task completed: ID {id}")
 
             return jsonify(task)
 
+    app.logger.warning(f"Task not found for update: ID {id}")
     return jsonify({"message": "Task not found"}), 404
 
 
@@ -93,11 +109,14 @@ def update_task(id):
 def delete_task(id):
     tasks = load_tasks()
 
-    tasks = [t for t in tasks if t["id"] != id]
+    if not any(task["id"] == id for task in tasks):
+        app.logger.warning(f"Task not found for deletion: ID {id}")
+        return jsonify({"message": "Task not found"}), 404
 
+    tasks = [t for t in tasks if t["id"] != id]
     save_tasks(tasks)
 
-    logging.info(f"Task deleted: {id}")
+    app.logger.info(f"Task deleted: ID {id}")
 
     return jsonify({
         "message": "Deleted"
@@ -105,4 +124,5 @@ def delete_task(id):
 
 
 if __name__ == "__main__":
+    app.logger.info("Starting Flask application")
     app.run(debug=True)
